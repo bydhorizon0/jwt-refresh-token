@@ -30,38 +30,6 @@ public class AuthController {
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
 
-    @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword())
-            );
-
-            User user = userService.findByEmail(loginRequest.getEmail());
-
-            String accessToken = jwtUtil.generateAccessToken(user.getEmail());
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getEmail());
-
-            ResponseCookie cookie = ResponseCookie.from("my-cookie", refreshToken.getToken())
-                    .httpOnly(true)
-                    .secure(true)
-                    // .domain("localhost")
-                    .path("/api/auth")
-                    .maxAge(JwtUtil.calcExpiresIn(JwtUtil.ACCESS_EXPIRATION_TIME))
-                    .build();
-
-            TokenResponse tokenResponse = new TokenResponse(accessToken, JwtUtil.calcExpiresIn(JwtUtil.ACCESS_EXPIRATION_TIME));
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                    .body(tokenResponse);
-        } catch (BadCredentialsException e) {
-            log.error(e.getMessage());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body("Invalid credentials");
-        }
-    }
-
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         if (userService.findByEmail(request.getEmail()) != null) {
@@ -74,5 +42,70 @@ public class AuthController {
         userService.saveUser(user);
 
         return ResponseEntity.ok("Register successfully");
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword())
+            );
+
+            User user = userService.findByEmail(loginRequest.getEmail());
+
+            String accessToken = jwtUtil.generateAccessToken(user.getEmail());
+            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getEmail());
+
+            ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken.getToken())
+                    .httpOnly(true)
+                    .secure(true)
+                    // .domain("localhost")
+                    .path("/api/auth")
+                    .maxAge(JwtUtil.REFRESH_EXPIRATION_TIME / 1000)
+                    .build();
+
+            TokenResponse tokenResponse = new TokenResponse(accessToken, JwtUtil.ACCESS_EXPIRATION_TIME / 1000);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                    .body(tokenResponse);
+        } catch (BadCredentialsException e) {
+            log.error(e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Invalid credentials");
+        }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<String> logout(@CookieValue("refreshToken") String refreshToken) {
+        refreshTokenService.deleteByToken(refreshToken);
+
+        ResponseCookie cookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .path("/api/auth")
+                .maxAge(0)
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .build();
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@CookieValue("refreshToken") String refreshToken) {
+        return refreshTokenService.findByToken(refreshToken)
+                .map(refreshTokenService::verifyExpiration)
+                .map(RefreshToken::getUserEmail)
+                .map(email -> {
+                    User user = userService.findByEmail(email);
+
+                    String newAccessToken = jwtUtil.generateAccessToken(user.getEmail());
+
+                    TokenResponse tokenResponse = new TokenResponse(newAccessToken, JwtUtil.ACCESS_EXPIRATION_TIME / 1000);
+
+                    return ResponseEntity.ok(tokenResponse);
+                })
+                .orElseThrow(() -> new RuntimeException("Refresh token is not in database"));
     }
 }

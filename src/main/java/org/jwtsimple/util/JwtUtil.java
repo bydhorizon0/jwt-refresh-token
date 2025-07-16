@@ -15,7 +15,7 @@ import java.util.function.Function;
 public class JwtUtil {
 
     public static final long ACCESS_EXPIRATION_TIME = 1000L * 60 * 30;
-    public static final long REFRESH_EXPIRATION_TIME = 1000L * 60 * 30;
+    public static final long REFRESH_EXPIRATION_TIME = 1000L * 60 * 60 * 24 * 7;
     private final SecretKey SECRET_KEY;
 
     public JwtUtil(@Value("${jwt.secret-key}") String secretKey) {
@@ -63,13 +63,6 @@ public class JwtUtil {
 
     public boolean isTokenExpired(String token) {
         return extractClaim(token, Claims::getExpiration).before(new Date());
-    }
-
-    public static long calcExpiresIn(long expiration) {
-        long now = System.currentTimeMillis();
-        Date expiryAt = new Date(now + expiration);
-
-        return (expiryAt.getTime() + System.currentTimeMillis() / 1000);
     }
 
 }

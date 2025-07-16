@@ -9,5 +9,11 @@ import lombok.Setter;
 @Setter
 public class TokenResponse {
     private String accessToken;
+    private String tokenType = "Bearer";
     private long expiresIn;
+
+    public TokenResponse(String accessToken, long expiresIn) {
+        this.accessToken = accessToken;
+        this.expiresIn = expiresIn;
+    }
 }
